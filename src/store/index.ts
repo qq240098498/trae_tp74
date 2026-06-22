@@ -11,6 +11,7 @@ import type {
   CommissionDetail,
   DashboardStats,
   HoursWarning,
+  WeaknessRecord,
 } from "../../shared/types"
 
 interface AppState {
@@ -25,6 +26,7 @@ interface AppState {
   studentDetail: Student | null
   studentExams: ExamAppointment[]
   studentCheckins: CheckInRecord[]
+  studentWeaknesses: WeaknessRecord[]
 
   schedules: Schedule[]
   vehicles: Vehicle[]
@@ -43,6 +45,10 @@ interface AppState {
   fetchDashboard: () => Promise<void>
   fetchStudents: (params?: Record<string, string>) => Promise<void>
   fetchStudentDetail: (id: number) => Promise<void>
+  fetchStudentWeaknesses: (id: number) => Promise<void>
+  addStudentWeakness: (studentId: number, data: Record<string, unknown>) => Promise<boolean>
+  resolveWeakness: (id: number) => Promise<boolean>
+  deleteWeakness: (id: number) => Promise<boolean>
   fetchSchedules: (params?: Record<string, string>) => Promise<void>
   fetchVehicles: () => Promise<void>
   fetchInstructors: () => Promise<void>
@@ -83,6 +89,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   studentDetail: null,
   studentExams: [],
   studentCheckins: [],
+  studentWeaknesses: [],
 
   schedules: [],
   vehicles: [],
@@ -130,16 +137,58 @@ export const useAppStore = create<AppState>((set, get) => ({
   fetchStudentDetail: async (id) => {
     set((s) => ({ loading: { ...s.loading, studentDetail: true }, errors: { ...s.errors, studentDetail: null } }))
     try {
-      const [student, exams, checkins] = await Promise.all([
+      const [student, exams, checkins, weaknesses] = await Promise.all([
         apiFetch<Student>(`/students/${id}`),
         apiFetch<ExamAppointment[]>(`/students/${id}/exams`),
         apiFetch<CheckInRecord[]>(`/students/${id}/checkins`),
+        apiFetch<WeaknessRecord[]>(`/students/${id}/weaknesses`),
       ])
-      set({ studentDetail: student, studentExams: exams, studentCheckins: checkins })
+      set({ studentDetail: student, studentExams: exams, studentCheckins: checkins, studentWeaknesses: weaknesses })
     } catch (e: unknown) {
       set((s) => ({ errors: { ...s.errors, studentDetail: (e as Error).message } }))
     } finally {
       set((s) => ({ loading: { ...s.loading, studentDetail: false } }))
+    }
+  },
+
+  fetchStudentWeaknesses: async (id) => {
+    try {
+      const data = await apiFetch<WeaknessRecord[]>(`/students/${id}/weaknesses`)
+      set({ studentWeaknesses: data })
+    } catch {
+      // silent
+    }
+  },
+
+  addStudentWeakness: async (studentId, data) => {
+    try {
+      await apiFetch(`/students/${studentId}/weaknesses`, { method: "POST", body: JSON.stringify(data) })
+      get().fetchStudentWeaknesses(studentId)
+      return true
+    } catch {
+      return false
+    }
+  },
+
+  resolveWeakness: async (id) => {
+    try {
+      const studentId = get().studentDetail?.id
+      await apiFetch(`/students/weaknesses/${id}/resolve`, { method: "PUT" })
+      if (studentId) get().fetchStudentWeaknesses(studentId)
+      return true
+    } catch {
+      return false
+    }
+  },
+
+  deleteWeakness: async (id) => {
+    try {
+      const studentId = get().studentDetail?.id
+      await apiFetch(`/students/weaknesses/${id}`, { method: "DELETE" })
+      if (studentId) get().fetchStudentWeaknesses(studentId)
+      return true
+    } catch {
+      return false
     }
   },
 

@@ -230,4 +230,115 @@ router.post('/:id/exam', (req: Request, res: Response): void => {
   }
 })
 
+router.get('/:id/weaknesses', (req: Request, res: Response): void => {
+  const student = db.prepare('SELECT id FROM student WHERE id = ?').get(req.params.id)
+  if (!student) {
+    res.status(404).json({ success: false, error: '学员不存在' })
+    return
+  }
+  const rows = db.prepare(`
+    SELECT wr.*, s.name as student_name, i.name as instructor_name
+    FROM weakness_record wr
+    LEFT JOIN student s ON wr.student_id = s.id
+    LEFT JOIN instructor i ON wr.instructor_id = i.id
+    WHERE wr.student_id = ?
+    ORDER BY wr.created_at DESC
+  `).all(req.params.id)
+  res.json({ success: true, data: rows })
+})
+
+router.post('/:id/weaknesses', (req: Request, res: Response): void => {
+  const student = db.prepare('SELECT id, instructor_id FROM student WHERE id = ?').get(req.params.id) as Record<string, unknown> | undefined
+  if (!student) {
+    res.status(404).json({ success: false, error: '学员不存在' })
+    return
+  }
+
+  const { item, level, note, check_in_id, instructor_id } = req.body
+
+  if (!item) {
+    res.status(400).json({ success: false, error: '薄弱项目为必填项' })
+    return
+  }
+
+  const validItems = ['daoku', 'cefang', 'poqi', 'swan']
+  if (!validItems.includes(item)) {
+    res.status(400).json({ success: false, error: '无效的薄弱项目' })
+    return
+  }
+
+  const levelNum = level ? Number(level) : 3
+  if (levelNum < 1 || levelNum > 5) {
+    res.status(400).json({ success: false, error: '严重程度必须在1-5之间' })
+    return
+  }
+
+  try {
+    const result = db.prepare(`
+      INSERT INTO weakness_record (student_id, check_in_id, instructor_id, item, level, note)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      Number(req.params.id),
+      check_in_id ?? null,
+      instructor_id ?? student['instructor_id'],
+      item,
+      levelNum,
+      note ?? null
+    )
+
+    const record = db.prepare(`
+      SELECT wr.*, s.name as student_name, i.name as instructor_name
+      FROM weakness_record wr
+      LEFT JOIN student s ON wr.student_id = s.id
+      LEFT JOIN instructor i ON wr.instructor_id = i.id
+      WHERE wr.id = ?
+    `).get(result.lastInsertRowid)
+
+    res.status(201).json({ success: true, data: record })
+  } catch {
+    res.status(500).json({ success: false, error: '添加薄弱项目失败' })
+  }
+})
+
+router.put('/weaknesses/:id/resolve', (req: Request, res: Response): void => {
+  const weakness = db.prepare('SELECT * FROM weakness_record WHERE id = ?').get(req.params.id)
+  if (!weakness) {
+    res.status(404).json({ success: false, error: '薄弱记录不存在' })
+    return
+  }
+
+  try {
+    db.prepare(`
+      UPDATE weakness_record SET resolved = 1, resolved_at = datetime('now') WHERE id = ?
+    `).run(req.params.id)
+
+    const updated = db.prepare(`
+      SELECT wr.*, s.name as student_name, i.name as instructor_name
+      FROM weakness_record wr
+      LEFT JOIN student s ON wr.student_id = s.id
+      LEFT JOIN instructor i ON wr.instructor_id = i.id
+      WHERE wr.id = ?
+    `).get(req.params.id)
+
+    res.json({ success: true, data: updated })
+  } catch {
+    res.status(500).json({ success: false, error: '更新失败' })
+  }
+})
+
+router.delete('/weaknesses/:id', (req: Request, res: Response): void => {
+  const weakness = db.prepare('SELECT * FROM weakness_record WHERE id = ?').get(req.params.id)
+  if (!weakness) {
+    res.status(404).json({ success: false, error: '薄弱记录不存在' })
+    return
+  }
+
+  try {
+    db.prepare('DELETE FROM weakness_record WHERE id = ?').run(req.params.id)
+    res.json({ success: true })
+  } catch {
+    res.status(500).json({ success: false, error: '删除失败' })
+  }
+})
+
 export default router

@@ -95,6 +95,19 @@ CREATE TABLE IF NOT EXISTS commission_setting (
     unit_price REAL NOT NULL,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS weakness_record (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL REFERENCES student(id),
+    check_in_id INTEGER REFERENCES check_in(id),
+    instructor_id INTEGER NOT NULL REFERENCES instructor(id),
+    item TEXT NOT NULL,
+    level INTEGER NOT NULL DEFAULT 3,
+    resolved INTEGER NOT NULL DEFAULT 0,
+    note TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    resolved_at TEXT
+);
 `)
 
 const cleanUp = db.transaction(() => {
@@ -229,6 +242,26 @@ if (countInstructors.count === 0) {
 
     insertCommissionSetting.run({ subject: 2, unit_price: 200 })
     insertCommissionSetting.run({ subject: 3, unit_price: 300 })
+
+    const insertWeakness = db.prepare(`
+      INSERT INTO weakness_record (student_id, check_in_id, instructor_id, item, level, resolved, note, created_at)
+      VALUES (@student_id, @check_in_id, @instructor_id, @item, @level, @resolved, @note, @created_at)
+    `)
+
+    const weaknessData = [
+      { student_id: 1, check_in_id: 1, instructor_id: 1, item: 'daoku', level: 4, resolved: 0, note: '入库角度总是偏左', created_at: dateOffset(-2, 9, 30) },
+      { student_id: 1, check_in_id: 5, instructor_id: 1, item: 'cefang', level: 3, resolved: 0, note: '回轮时机掌握不好', created_at: dateOffset(-1, 9, 0) },
+      { student_id: 2, check_in_id: 2, instructor_id: 1, item: 'poqi', level: 5, resolved: 0, note: '坡起总是熄火', created_at: dateOffset(-2, 11, 0) },
+      { student_id: 2, check_in_id: 6, instructor_id: 1, item: 'swan', level: 2, resolved: 0, note: null, created_at: dateOffset(-1, 11, 30) },
+      { student_id: 3, check_in_id: 3, instructor_id: 2, item: 'daoku', level: 2, resolved: 1, note: '已纠正', created_at: dateOffset(-2, 15, 0) },
+      { student_id: 4, check_in_id: 4, instructor_id: 2, item: 'cefang', level: 3, resolved: 0, note: '侧方停车总是压线', created_at: dateOffset(-2, 17, 0) },
+      { student_id: 5, check_in_id: 6, instructor_id: 3, item: 'swan', level: 4, resolved: 0, note: 'S弯容易扫线', created_at: dateOffset(-1, 11, 0) },
+      { student_id: 6, check_in_id: 7, instructor_id: 1, item: 'poqi', level: 3, resolved: 0, note: null, created_at: dateOffset(-1, 15, 30) },
+    ]
+
+    for (const w of weaknessData) {
+      insertWeakness.run(w)
+    }
   })
 
   seed()

@@ -1,9 +1,10 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useParams, useNavigate } from "react-router-dom"
-import { ArrowLeft, CheckCircle2, Circle } from "lucide-react"
+import { ArrowLeft, CheckCircle2, Circle, Plus, Check, Trash2, AlertTriangle, X } from "lucide-react"
 import { useAppStore } from "@/store"
 import { cn, formatHours } from "@/lib/utils"
 import { StatusBadge } from "./students/StudentModals"
+import { WEAKNESS_ITEMS, type WeaknessItem } from "../../shared/types"
 
 const subjectSteps = [
   { num: 1, label: "科目一" },
@@ -17,6 +18,100 @@ function getSubjectStatus(current: number, stepNum: number, studentStatus: strin
   if (stepNum < current) return "done"
   if (stepNum === current) return "current"
   return "pending"
+}
+
+function WeaknessRadarChart({ stats }: { stats: Record<string, { level: number; count: number }> }) {
+  const size = 220
+  const center = size / 2
+  const maxRadius = 75
+  const levels = 5
+  const items = WEAKNESS_ITEMS
+  const angleStep = (2 * Math.PI) / items.length
+  const startAngle = -Math.PI / 2
+
+  const getPoint = (index: number, value: number) => {
+    const angle = startAngle + index * angleStep
+    const radius = (value / levels) * maxRadius
+    return {
+      x: center + radius * Math.cos(angle),
+      y: center + radius * Math.sin(angle),
+    }
+  }
+
+  const getLabelPoint = (index: number) => {
+    const angle = startAngle + index * angleStep
+    const radius = maxRadius + 20
+    return {
+      x: center + radius * Math.cos(angle),
+      y: center + radius * Math.sin(angle),
+    }
+  }
+
+  const dataPoints = items.map((item, i) => getPoint(i, stats[item.key]?.level || 0))
+  const pathD = dataPoints.map((p, i) => (i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`)).join(" ") + " Z"
+
+  return (
+    <svg width={size} height={size} className="mx-auto">
+      {Array.from({ length: levels }).map((_, i) => {
+        const r = ((i + 1) / levels) * maxRadius
+        const points = items.map((_, idx) => {
+          const angle = startAngle + idx * angleStep
+          return `${center + r * Math.cos(angle)},${center + r * Math.sin(angle)}`
+        }).join(" ")
+        return (
+          <polygon
+            key={i}
+            points={points}
+            fill="none"
+            stroke="#e4e4e7"
+            strokeWidth="1"
+          />
+        )
+      })}
+
+      {items.map((_, i) => {
+        const angle = startAngle + i * angleStep
+        return (
+          <line
+            key={i}
+            x1={center}
+            y1={center}
+            x2={center + maxRadius * Math.cos(angle)}
+            y2={center + maxRadius * Math.sin(angle)}
+            stroke="#e4e4e7"
+            strokeWidth="1"
+          />
+        )
+      })}
+
+      <path
+        d={pathD}
+        fill="rgba(244, 63, 94, 0.2)"
+        stroke="#f43f5e"
+        strokeWidth="2"
+      />
+
+      {dataPoints.map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r="4" fill="#f43f5e" />
+      ))}
+
+      {items.map((item, i) => {
+        const pos = getLabelPoint(i)
+        return (
+          <text
+            key={item.key}
+            x={pos.x}
+            y={pos.y}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            className="text-xs fill-zinc-600 font-medium"
+          >
+            {item.label}
+          </text>
+        )
+      })}
+    </svg>
+  )
 }
 
 function ProgressBar({ completed, required }: { completed: number; required: number }) {
@@ -52,11 +147,45 @@ function formatDuration(hours: number | null | undefined) {
 export default function StudentDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { studentDetail, studentExams, studentCheckins, loading, fetchStudentDetail } = useAppStore()
+  const { studentDetail, studentExams, studentCheckins, studentWeaknesses, loading, fetchStudentDetail, addStudentWeakness, resolveWeakness, deleteWeakness } = useAppStore()
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [selectedItem, setSelectedItem] = useState<WeaknessItem | null>(null)
+  const [weaknessLevel, setWeaknessLevel] = useState(3)
+  const [weaknessNote, setWeaknessNote] = useState("")
 
   useEffect(() => {
     if (id) fetchStudentDetail(Number(id))
   }, [id, fetchStudentDetail])
+
+  const handleAddWeakness = () => {
+    if (!id || !selectedItem) return
+    addStudentWeakness(Number(id), {
+      item: selectedItem,
+      level: weaknessLevel,
+      note: weaknessNote || null,
+    })
+    setShowAddModal(false)
+    setSelectedItem(null)
+    setWeaknessLevel(3)
+    setWeaknessNote("")
+  }
+
+  const unresolvedWeaknesses = studentWeaknesses.filter(w => w.resolved === 0)
+  const resolvedWeaknesses = studentWeaknesses.filter(w => w.resolved === 1)
+
+  const getWeaknessStats = () => {
+    const stats: Record<string, { level: number; count: number }> = {}
+    WEAKNESS_ITEMS.forEach(item => {
+      stats[item.key] = { level: 0, count: 0 }
+    })
+    unresolvedWeaknesses.forEach(w => {
+      if (stats[w.item]) {
+        stats[w.item].level = Math.max(stats[w.item].level, w.level)
+        stats[w.item].count += 1
+      }
+    })
+    return stats
+  }
 
   if (loading.studentDetail || !studentDetail) {
     return (
@@ -192,7 +321,7 @@ export default function StudentDetail() {
           </div>
 
           <div className="bg-white rounded-xl shadow-sm">
-            <div className="px-6 py-4 border-b border-zinc-100">
+            <div className="px-6 py-4 border-b border-zinc-100 flex items-center justify-between">
               <h2 className="text-base font-semibold text-zinc-900">签到记录</h2>
             </div>
             {studentCheckins.length === 0 ? (
@@ -226,8 +355,212 @@ export default function StudentDetail() {
               </div>
             )}
           </div>
+
+          <div className="bg-white rounded-xl shadow-sm">
+            <div className="px-6 py-4 border-b border-zinc-100 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-zinc-900">薄弱项目分析</h2>
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center gap-1 px-3 py-1.5 bg-rose-500 text-white text-xs rounded-lg hover:bg-rose-600 transition-colors font-medium"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                添加薄弱项
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <h3 className="text-sm font-medium text-zinc-700 mb-3">弱点雷达图</h3>
+                  <WeaknessRadarChart stats={getWeaknessStats()} />
+                  {unresolvedWeaknesses.length === 0 && (
+                    <p className="text-center text-sm text-zinc-400 mt-2">暂无薄弱项目记录</p>
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-zinc-700 mb-3">
+                    待加强项目
+                    {unresolvedWeaknesses.length > 0 && (
+                      <span className="ml-2 px-2 py-0.5 bg-rose-100 text-rose-600 text-xs rounded-full">
+                        {unresolvedWeaknesses.length}项
+                      </span>
+                    )}
+                  </h3>
+                  {unresolvedWeaknesses.length === 0 ? (
+                    <div className="py-8 text-center text-zinc-400 text-sm">暂无待加强项目</div>
+                  ) : (
+                    <div className="space-y-2 max-h-52 overflow-y-auto">
+                      {unresolvedWeaknesses.map((w) => (
+                        <div key={w.id} className="p-3 bg-rose-50 border border-rose-100 rounded-lg">
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-2">
+                              <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-sm font-medium text-zinc-900">
+                                  {WEAKNESS_ITEMS.find(item => item.key === w.item)?.label}
+                                </p>
+                                <p className="text-xs text-zinc-500 mt-0.5">
+                                  严重程度：Lv.{w.level} · 标记于 {new Date(w.created_at).toLocaleDateString("zh-CN")}
+                                </p>
+                                {w.note && (
+                                  <p className="text-xs text-zinc-600 mt-1">{w.note}</p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => resolveWeakness(w.id)}
+                                className="p-1.5 text-teal-600 hover:bg-teal-50 rounded transition-colors"
+                                title="标记为已解决"
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => deleteWeakness(w.id)}
+                                className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                title="删除"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {resolvedWeaknesses.length > 0 && (
+                <div className="mt-6 pt-6 border-t border-zinc-100">
+                  <h3 className="text-sm font-medium text-zinc-700 mb-3">
+                    已解决项目
+                    <span className="ml-2 px-2 py-0.5 bg-teal-100 text-teal-600 text-xs rounded-full">
+                      {resolvedWeaknesses.length}项
+                    </span>
+                  </h3>
+                  <div className="space-y-2">
+                    {resolvedWeaknesses.map((w) => (
+                      <div key={w.id} className="p-3 bg-zinc-50 border border-zinc-100 rounded-lg opacity-70">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-teal-500 shrink-0" />
+                            <div>
+                              <p className="text-sm font-medium text-zinc-700 line-through">
+                                {WEAKNESS_ITEMS.find(item => item.key === w.item)?.label}
+                              </p>
+                              <p className="text-xs text-zinc-400">
+                                解决于 {w.resolved_at ? new Date(w.resolved_at).toLocaleDateString("zh-CN") : "-"}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => deleteWeakness(w.id)}
+                            className="p-1.5 text-zinc-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                            title="删除"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
+
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="px-6 py-4 border-b border-zinc-100 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-zinc-900">添加薄弱项目</h3>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="text-zinc-400 hover:text-zinc-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-5">
+              <div>
+                <label className="text-sm font-medium text-zinc-700 mb-2 block">选择薄弱项目</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {WEAKNESS_ITEMS.map((item) => (
+                    <button
+                      key={item.key}
+                      onClick={() => setSelectedItem(item.key)}
+                      className={cn(
+                        "px-4 py-3 text-sm rounded-xl border-2 transition-all",
+                        selectedItem === item.key
+                          ? "border-rose-500 bg-rose-50 text-rose-700 font-medium"
+                          : "border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                      )}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-zinc-700 mb-2 block">
+                  严重程度：<span className="text-rose-600">Lv.{weaknessLevel}</span>
+                </label>
+                <div className="flex items-center gap-3">
+                  {[1, 2, 3, 4, 5].map((level) => (
+                    <button
+                      key={level}
+                      onClick={() => setWeaknessLevel(level)}
+                      className={cn(
+                        "flex-1 py-2 text-sm rounded-lg font-medium transition-all",
+                        weaknessLevel === level
+                          ? "bg-rose-500 text-white"
+                          : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"
+                      )}
+                    >
+                      {level}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-zinc-400 mt-1.5">1=轻微，5=严重</p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-zinc-700 mb-2 block">备注（可选）</label>
+                <textarea
+                  value={weaknessNote}
+                  onChange={(e) => setWeaknessNote(e.target.value)}
+                  placeholder="例如：入库角度总是偏左..."
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent resize-none"
+                  rows={2}
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-zinc-100 flex justify-end gap-2">
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="px-4 py-2 text-sm text-zinc-600 hover:text-zinc-800 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleAddWeakness}
+                disabled={!selectedItem}
+                className={cn(
+                  "px-4 py-2 text-sm font-medium rounded-lg transition-colors",
+                  selectedItem
+                    ? "bg-rose-500 text-white hover:bg-rose-600"
+                    : "bg-zinc-200 text-zinc-400 cursor-not-allowed"
+                )}
+              >
+                确认添加
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

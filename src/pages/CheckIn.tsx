@@ -1,12 +1,18 @@
 import { useEffect, useState } from "react"
-import { QrCode, LogOut, AlertCircle, Info } from "lucide-react"
+import { QrCode, LogOut, AlertCircle, Info, Flag, X, AlertTriangle, ChevronDown } from "lucide-react"
 import { useAppStore } from "@/store"
 import { cn } from "@/lib/utils"
+import { WEAKNESS_ITEMS, type WeaknessItem } from "../../shared/types"
 
 export default function CheckIn() {
-  const { activeCheckins, checkins, loading, fetchActiveCheckins, fetchCheckins, checkoutCheckin } = useAppStore()
+  const { activeCheckins, checkins, loading, fetchActiveCheckins, fetchCheckins, checkoutCheckin, addStudentWeakness, studentWeaknesses, fetchStudentWeaknesses } = useAppStore()
   const [dateFilter, setDateFilter] = useState(new Date().toISOString().slice(0, 10))
-  const [toast, setToast] = useState<{ type: "warning" | "error" | "info"; message: string } | null>(null)
+  const [toast, setToast] = useState<{ type: "warning" | "error" | "info" | "success"; message: string } | null>(null)
+  const [weaknessModal, setWeaknessModal] = useState<{ checkInId: number; studentId: number; studentName: string } | null>(null)
+  const [selectedItem, setSelectedItem] = useState<WeaknessItem | null>(null)
+  const [weaknessLevel, setWeaknessLevel] = useState(3)
+  const [weaknessNote, setWeaknessNote] = useState("")
+  const [expandedStudentId, setExpandedStudentId] = useState<number | null>(null)
 
   useEffect(() => {
     fetchActiveCheckins()
@@ -33,6 +39,47 @@ export default function CheckIn() {
       setToast({ type: "info", message: "签退成功，学时已自动计算" })
     }
   }
+
+  const openWeaknessModal = (checkInId: number, studentId: number, studentName: string) => {
+    setWeaknessModal({ checkInId, studentId, studentName })
+    setSelectedItem(null)
+    setWeaknessLevel(3)
+    setWeaknessNote("")
+    fetchStudentWeaknesses(studentId)
+  }
+
+  const toggleExpand = (studentId: number) => {
+    if (expandedStudentId === studentId) {
+      setExpandedStudentId(null)
+    } else {
+      setExpandedStudentId(studentId)
+      fetchStudentWeaknesses(studentId)
+    }
+  }
+
+  const closeWeaknessModal = () => {
+    setWeaknessModal(null)
+  }
+
+  const handleAddWeakness = async () => {
+    if (!weaknessModal || !selectedItem) return
+
+    const success = await addStudentWeakness(weaknessModal.studentId, {
+      item: selectedItem,
+      level: weaknessLevel,
+      note: weaknessNote || null,
+      check_in_id: weaknessModal.checkInId,
+    })
+
+    if (success) {
+      setToast({ type: "success", message: "薄弱项目已标记" })
+      closeWeaknessModal()
+    } else {
+      setToast({ type: "error", message: "标记失败，请重试" })
+    }
+  }
+
+  const unresolvedWeaknesses = studentWeaknesses.filter(w => w.resolved === 0)
 
   const formatDuration = (hours: number | null | undefined) => {
     if (hours == null) return null
@@ -82,20 +129,76 @@ export default function CheckIn() {
           ) : (
             <div className="divide-y divide-zinc-100">
               {activeCheckins.map((c) => (
-                <div key={c.id} className="px-6 py-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-zinc-900">{c.student_name}</p>
-                    <p className="text-xs text-zinc-500 mt-0.5">
-                      签到时间: {new Date(c.check_in_time).toLocaleString("zh-CN")}
-                    </p>
+                <div key={c.id} className="px-6 py-3">
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => toggleExpand(c.student_id)}
+                      className="flex items-center gap-2 text-left"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-zinc-900">{c.student_name}</p>
+                          {expandedStudentId === c.student_id && unresolvedWeaknesses.length > 0 && (
+                            <span className="px-1.5 py-0.5 bg-rose-100 text-rose-600 text-xs rounded-full font-medium">
+                              {unresolvedWeaknesses.length}项薄弱
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-zinc-500 mt-0.5">
+                          签到时间: {new Date(c.check_in_time).toLocaleString("zh-CN")}
+                        </p>
+                      </div>
+                      <ChevronDown className={cn(
+                        "w-4 h-4 text-zinc-400 transition-transform",
+                        expandedStudentId === c.student_id && "rotate-180"
+                      )} />
+                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => openWeaknessModal(c.id, c.student_id, c.student_name || "")}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-rose-50 text-rose-600 text-xs rounded-lg hover:bg-rose-100 transition-colors font-medium"
+                      >
+                        <Flag className="w-3.5 h-3.5" />
+                        标记薄弱项
+                      </button>
+                      <button
+                        onClick={() => handleCheckout(c.id)}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 text-white text-xs rounded-lg hover:bg-amber-600 transition-colors font-medium"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        签退
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    onClick={() => handleCheckout(c.id)}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 text-white text-xs rounded-lg hover:bg-amber-600 transition-colors font-medium"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    签退
-                  </button>
+                  {expandedStudentId === c.student_id && unresolvedWeaknesses.length > 0 && (
+                    <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                      <div className="flex items-center gap-1.5 text-amber-700 text-xs font-medium mb-2">
+                        <AlertTriangle className="w-4 h-4" />
+                        待加强项目（建议优先训练）
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {unresolvedWeaknesses.map(w => (
+                          <span key={w.id} className="px-2.5 py-1 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">
+                            {WEAKNESS_ITEMS.find(item => item.key === w.item)?.label} · Lv.{w.level}
+                          </span>
+                        ))}
+                      </div>
+                      {unresolvedWeaknesses.some(w => w.note) && (
+                        <div className="mt-2 pt-2 border-t border-amber-200">
+                          {unresolvedWeaknesses.filter(w => w.note).map(w => (
+                            <p key={w.id} className="text-xs text-amber-600">
+                              · {WEAKNESS_ITEMS.find(item => item.key === w.item)?.label}：{w.note}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {expandedStudentId === c.student_id && unresolvedWeaknesses.length === 0 && (
+                    <div className="mt-3 p-3 bg-zinc-50 border border-zinc-200 rounded-lg text-center">
+                      <p className="text-xs text-zinc-500">暂无薄弱项目记录</p>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -166,6 +269,103 @@ export default function CheckIn() {
           </table>
         </div>
       </div>
+
+      {weaknessModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+            <div className="px-6 py-4 border-b border-zinc-100 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-zinc-900">标记薄弱项目</h3>
+              <button
+                onClick={closeWeaknessModal}
+                className="text-zinc-400 hover:text-zinc-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-5">
+              <div>
+                <p className="text-sm text-zinc-600 mb-2">
+                  学员：<span className="font-medium text-zinc-900">{weaknessModal.studentName}</span>
+                </p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-zinc-700 mb-2 block">选择薄弱项目</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {WEAKNESS_ITEMS.map((item) => (
+                    <button
+                      key={item.key}
+                      onClick={() => setSelectedItem(item.key)}
+                      className={cn(
+                        "px-4 py-3 text-sm rounded-xl border-2 transition-all",
+                        selectedItem === item.key
+                          ? "border-rose-500 bg-rose-50 text-rose-700 font-medium"
+                          : "border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                      )}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-zinc-700 mb-2 block">
+                  严重程度：<span className="text-rose-600">Lv.{weaknessLevel}</span>
+                </label>
+                <div className="flex items-center gap-3">
+                  {[1, 2, 3, 4, 5].map((level) => (
+                    <button
+                      key={level}
+                      onClick={() => setWeaknessLevel(level)}
+                      className={cn(
+                        "flex-1 py-2 text-sm rounded-lg font-medium transition-all",
+                        weaknessLevel === level
+                          ? "bg-rose-500 text-white"
+                          : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"
+                      )}
+                    >
+                      {level}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-zinc-400 mt-1.5">1=轻微，5=严重</p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-zinc-700 mb-2 block">备注（可选）</label>
+                <textarea
+                  value={weaknessNote}
+                  onChange={(e) => setWeaknessNote(e.target.value)}
+                  placeholder="例如：入库角度总是偏左..."
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-transparent resize-none"
+                  rows={2}
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-zinc-100 flex justify-end gap-2">
+              <button
+                onClick={closeWeaknessModal}
+                className="px-4 py-2 text-sm text-zinc-600 hover:text-zinc-800 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleAddWeakness}
+                disabled={!selectedItem}
+                className={cn(
+                  "px-4 py-2 text-sm font-medium rounded-lg transition-colors",
+                  selectedItem
+                    ? "bg-rose-500 text-white hover:bg-rose-600"
+                    : "bg-zinc-200 text-zinc-400 cursor-not-allowed"
+                )}
+              >
+                确认标记
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

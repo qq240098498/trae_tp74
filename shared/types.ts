@@ -107,3 +107,27 @@ export interface HoursWarning {
   required_hours: number
   shortage: number
 }
+
+export type WeaknessItem = 'daoku' | 'cefang' | 'poqi' | 'swan'
+
+export interface WeaknessRecord {
+  id: number
+  student_id: number
+  student_name?: string
+  check_in_id: number | null
+  instructor_id: number
+  instructor_name?: string
+  item: WeaknessItem
+  level: number
+  resolved: number
+  note: string | null
+  created_at: string
+  resolved_at: string | null
+}
+
+export const WEAKNESS_ITEMS: { key: WeaknessItem; label: string }[] = [
+  { key: 'daoku', label: '倒车入库' },
+  { key: 'cefang', label: '侧方停车' },
+  { key: 'poqi', label: '坡道起步' },
+  { key: 'swan', label: 'S弯行驶' },
+]
