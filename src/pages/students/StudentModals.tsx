@@ -1,6 +1,6 @@
 import { useState } from "react"
 import type { Student } from "../../../shared/types"
-import { cn } from "@/lib/utils"
+import { cn, formatHours, formatShortage } from "@/lib/utils"
 
 const statusMap: Record<Student["status"], { label: string; cls: string }> = {
   training: { label: "在训", cls: "bg-blue-100 text-blue-700" },
@@ -36,12 +36,12 @@ export function ExamModal({ student, onClose, onConfirm, serverError }: { studen
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-zinc-500">完成学时</span>
-            <span className="text-zinc-900 font-medium">{completed}/{required}小时</span>
+            <span className="text-zinc-900 font-medium">{formatHours(completed)}/{formatHours(required)}小时</span>
           </div>
         </div>
         {!sufficient && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-5 flex items-center gap-2">
-            <span className="text-red-600 text-sm font-medium">学时不足，科目{subject}还需补齐{shortage}小时</span>
+            <span className="text-red-600 text-sm font-medium">学时不足，科目{subject}还需补齐{formatShortage(shortage)}小时</span>
           </div>
         )}
         {sufficient && !serverError && (

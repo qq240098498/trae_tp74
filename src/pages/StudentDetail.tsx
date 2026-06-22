@@ -2,7 +2,7 @@ import { useEffect } from "react"
 import { useParams, useNavigate } from "react-router-dom"
 import { ArrowLeft, CheckCircle2, Circle } from "lucide-react"
 import { useAppStore } from "@/store"
-import { cn } from "@/lib/utils"
+import { cn, formatHours } from "@/lib/utils"
 import { StatusBadge } from "./students/StudentModals"
 
 const subjectSteps = [
@@ -26,7 +26,7 @@ function ProgressBar({ completed, required }: { completed: number; required: num
     <div className="space-y-1">
       <div className="flex justify-between text-sm">
         <span className="text-zinc-600">学时进度</span>
-        <span className="text-zinc-900 font-medium">{completed}/{required}小时</span>
+        <span className="text-zinc-900 font-medium">{formatHours(completed)}/{formatHours(required)}小时</span>
       </div>
       <div className="h-2.5 bg-zinc-100 rounded-full overflow-hidden">
         <div className={cn("h-full rounded-full transition-all", color)} style={{ width: `${Math.min(pct, 100)}%` }} />

@@ -61,17 +61,17 @@ function getHoursWarning(_req: Request, res: Response): void {
       s.name as student_name,
       s.current_subject,
       CASE
-        WHEN s.current_subject = 2 THEN s.completed_hours_subject2
-        ELSE s.completed_hours_subject3
+        WHEN s.current_subject = 2 THEN ROUND(s.completed_hours_subject2, 1)
+        ELSE ROUND(s.completed_hours_subject3, 1)
       END as completed_hours,
       CASE
         WHEN s.current_subject = 2 THEN s.required_hours_subject2
         ELSE s.required_hours_subject3
       END as required_hours,
-      CASE
+      ROUND(CASE
         WHEN s.current_subject = 2 THEN s.required_hours_subject2 - s.completed_hours_subject2
         ELSE s.required_hours_subject3 - s.completed_hours_subject3
-      END as shortage
+      END, 1) as shortage
     FROM student s
     WHERE s.status = 'training'
       AND (

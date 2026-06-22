@@ -2,7 +2,7 @@ import { useEffect } from "react"
 import { Link } from "react-router-dom"
 import { Users, Calendar, FileText, DollarSign, AlertTriangle } from "lucide-react"
 import { useAppStore } from "@/store"
-import { cn } from "@/lib/utils"
+import { cn, formatHours, formatShortage } from "@/lib/utils"
 
 const statCards = [
   { key: "total_students" as const, label: "在训学员", icon: Users, gradient: "from-teal-600 to-teal-700" },
@@ -131,10 +131,10 @@ export default function Dashboard() {
                 <AlertTriangle className="w-5 h-5 text-red-500 shrink-0" />
                 <span className="text-sm text-zinc-900 font-medium">{w.student_name}</span>
                 <span className="text-sm text-red-600">
-                  科目{w.current_subject}还差{w.shortage}小时
+                  科目{w.current_subject}还差{formatShortage(w.shortage)}小时
                 </span>
                 <span className="ml-auto text-xs text-zinc-400">
-                  已完成{w.completed_hours}/{w.required_hours}小时
+                  已完成{formatHours(w.completed_hours)}/{formatHours(w.required_hours)}小时
                 </span>
               </Link>
             ))}
