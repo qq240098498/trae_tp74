@@ -108,6 +108,24 @@ CREATE TABLE IF NOT EXISTS weakness_record (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     resolved_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS weakness_item_config (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key TEXT NOT NULL UNIQUE,
+    label TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS weakness_level_config (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    level INTEGER NOT NULL UNIQUE,
+    label TEXT NOT NULL,
+    description TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `)
 
 const cleanUp = db.transaction(() => {
@@ -261,6 +279,35 @@ if (countInstructors.count === 0) {
 
     for (const w of weaknessData) {
       insertWeakness.run(w)
+    }
+
+    const insertWeaknessItem = db.prepare(`
+      INSERT INTO weakness_item_config (key, label, sort_order, enabled)
+      VALUES (@key, @label, @sort_order, @enabled)
+    `)
+    const weaknessItemData = [
+      { key: 'daoku', label: '倒车入库', sort_order: 1, enabled: 1 },
+      { key: 'cefang', label: '侧方停车', sort_order: 2, enabled: 1 },
+      { key: 'poqi', label: '坡道起步', sort_order: 3, enabled: 1 },
+      { key: 'swan', label: 'S弯行驶', sort_order: 4, enabled: 1 },
+    ]
+    for (const item of weaknessItemData) {
+      insertWeaknessItem.run(item)
+    }
+
+    const insertWeaknessLevel = db.prepare(`
+      INSERT INTO weakness_level_config (level, label, description, enabled)
+      VALUES (@level, @label, @description, @enabled)
+    `)
+    const weaknessLevelData = [
+      { level: 1, label: '轻微', description: '偶尔出现，稍加提醒即可纠正', enabled: 1 },
+      { level: 2, label: '一般', description: '需要注意，练习时重点关注', enabled: 1 },
+      { level: 3, label: '中等', description: '经常出错，建议专项训练', enabled: 1 },
+      { level: 4, label: '严重', description: '多次练习仍有困难，需优先训练', enabled: 1 },
+      { level: 5, label: '非常严重', description: '严重影响考试，需立即重点突破', enabled: 1 },
+    ]
+    for (const lvl of weaknessLevelData) {
+      insertWeaknessLevel.run(lvl)
     }
   })
 

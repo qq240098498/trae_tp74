@@ -20,13 +20,21 @@ function getSubjectStatus(current: number, stepNum: number, studentStatus: strin
   return "pending"
 }
 
-function WeaknessRadarChart({ stats }: { stats: Record<string, { level: number; count: number }> }) {
+function WeaknessRadarChart({
+  stats,
+  items,
+  maxLevel = 5,
+}: {
+  stats: Record<string, { level: number; count: number }>
+  items: { key: string; label: string }[]
+  maxLevel?: number
+}) {
   const size = 220
   const center = size / 2
   const maxRadius = 75
-  const levels = 5
-  const items = WEAKNESS_ITEMS
-  const angleStep = (2 * Math.PI) / items.length
+  const displayItems = items.length > 0 ? items : WEAKNESS_ITEMS
+  const levels = Math.max(maxLevel, 5)
+  const angleStep = (2 * Math.PI) / displayItems.length
   const startAngle = -Math.PI / 2
 
   const getPoint = (index: number, value: number) => {
@@ -47,14 +55,14 @@ function WeaknessRadarChart({ stats }: { stats: Record<string, { level: number; 
     }
   }
 
-  const dataPoints = items.map((item, i) => getPoint(i, stats[item.key]?.level || 0))
+  const dataPoints = displayItems.map((item, i) => getPoint(i, stats[item.key]?.level || 0))
   const pathD = dataPoints.map((p, i) => (i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`)).join(" ") + " Z"
 
   return (
     <svg width={size} height={size} className="mx-auto">
       {Array.from({ length: levels }).map((_, i) => {
         const r = ((i + 1) / levels) * maxRadius
-        const points = items.map((_, idx) => {
+        const points = displayItems.map((_, idx) => {
           const angle = startAngle + idx * angleStep
           return `${center + r * Math.cos(angle)},${center + r * Math.sin(angle)}`
         }).join(" ")
@@ -69,7 +77,7 @@ function WeaknessRadarChart({ stats }: { stats: Record<string, { level: number; 
         )
       })}
 
-      {items.map((_, i) => {
+      {displayItems.map((_, i) => {
         const angle = startAngle + i * angleStep
         return (
           <line
@@ -95,7 +103,7 @@ function WeaknessRadarChart({ stats }: { stats: Record<string, { level: number; 
         <circle key={i} cx={p.x} cy={p.y} r="4" fill="#f43f5e" />
       ))}
 
-      {items.map((item, i) => {
+      {displayItems.map((item, i) => {
         const pos = getLabelPoint(i)
         return (
           <text
@@ -147,35 +155,63 @@ function formatDuration(hours: number | null | undefined) {
 export default function StudentDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { studentDetail, studentExams, studentCheckins, studentWeaknesses, loading, fetchStudentDetail, addStudentWeakness, resolveWeakness, deleteWeakness } = useAppStore()
+  const { studentDetail, studentExams, studentCheckins, studentWeaknesses, loading, fetchStudentDetail, addStudentWeakness, resolveWeakness, deleteWeakness, fetchWeaknessItemConfigs, fetchWeaknessLevelConfigs, weaknessItemConfigs, weaknessLevelConfigs } = useAppStore()
   const [showAddModal, setShowAddModal] = useState(false)
   const [selectedItem, setSelectedItem] = useState<WeaknessItem | null>(null)
-  const [weaknessLevel, setWeaknessLevel] = useState(3)
+  const [weaknessLevel, setWeaknessLevel] = useState<number | null>(null)
   const [weaknessNote, setWeaknessNote] = useState("")
 
   useEffect(() => {
     if (id) fetchStudentDetail(Number(id))
-  }, [id, fetchStudentDetail])
+    fetchWeaknessItemConfigs()
+    fetchWeaknessLevelConfigs()
+  }, [id, fetchStudentDetail, fetchWeaknessItemConfigs, fetchWeaknessLevelConfigs])
+
+  const enabledItems = weaknessItemConfigs.filter(i => i.enabled)
+  const enabledLevels = weaknessLevelConfigs.filter(l => l.enabled).sort((a, b) => a.level - b.level)
+  const fallbackItems = enabledItems.length > 0
+    ? enabledItems.map(i => ({ key: i.key, label: i.label }))
+    : WEAKNESS_ITEMS
+  const defaultLevel = enabledLevels.length > 0 ? enabledLevels[Math.floor(enabledLevels.length / 2)].level : 5
+  const maxLevel = enabledLevels.length > 0 ? Math.max(...enabledLevels.map(l => l.level)) : 5
+
+  const getItemLabel = (key: string) => {
+    const config = weaknessItemConfigs.find(i => i.key === key)
+    if (config) return config.label
+    const fallback = WEAKNESS_ITEMS.find(i => i.key === key)
+    return fallback?.label || key
+  }
+
+  const getLevelLabel = (level: number) => {
+    const config = weaknessLevelConfigs.find(l => l.level === level)
+    return config?.label || `Lv.${level}`
+  }
 
   const handleAddWeakness = () => {
     if (!id || !selectedItem) return
     addStudentWeakness(Number(id), {
       item: selectedItem,
-      level: weaknessLevel,
+      level: weaknessLevel ?? defaultLevel,
       note: weaknessNote || null,
     })
     setShowAddModal(false)
     setSelectedItem(null)
-    setWeaknessLevel(3)
+    setWeaknessLevel(null)
     setWeaknessNote("")
   }
+
+  useEffect(() => {
+    if (showAddModal) {
+      setWeaknessLevel(defaultLevel)
+    }
+  }, [showAddModal, defaultLevel])
 
   const unresolvedWeaknesses = studentWeaknesses.filter(w => w.resolved === 0)
   const resolvedWeaknesses = studentWeaknesses.filter(w => w.resolved === 1)
 
   const getWeaknessStats = () => {
     const stats: Record<string, { level: number; count: number }> = {}
-    WEAKNESS_ITEMS.forEach(item => {
+    fallbackItems.forEach(item => {
       stats[item.key] = { level: 0, count: 0 }
     })
     unresolvedWeaknesses.forEach(w => {
@@ -371,7 +407,7 @@ export default function StudentDetail() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <h3 className="text-sm font-medium text-zinc-700 mb-3">弱点雷达图</h3>
-                  <WeaknessRadarChart stats={getWeaknessStats()} />
+                  <WeaknessRadarChart stats={getWeaknessStats()} items={fallbackItems} maxLevel={maxLevel} />
                   {unresolvedWeaknesses.length === 0 && (
                     <p className="text-center text-sm text-zinc-400 mt-2">暂无薄弱项目记录</p>
                   )}
@@ -396,10 +432,10 @@ export default function StudentDetail() {
                               <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
                               <div>
                                 <p className="text-sm font-medium text-zinc-900">
-                                  {WEAKNESS_ITEMS.find(item => item.key === w.item)?.label}
+                                  {getItemLabel(String(w.item))}
                                 </p>
                                 <p className="text-xs text-zinc-500 mt-0.5">
-                                  严重程度：Lv.{w.level} · 标记于 {new Date(w.created_at).toLocaleDateString("zh-CN")}
+                                  严重程度：{getLevelLabel(w.level)} · 标记于 {new Date(w.created_at).toLocaleDateString("zh-CN")}
                                 </p>
                                 {w.note && (
                                   <p className="text-xs text-zinc-600 mt-1">{w.note}</p>
@@ -446,7 +482,7 @@ export default function StudentDetail() {
                             <CheckCircle2 className="w-4 h-4 text-teal-500 shrink-0" />
                             <div>
                               <p className="text-sm font-medium text-zinc-700 line-through">
-                                {WEAKNESS_ITEMS.find(item => item.key === w.item)?.label}
+                                {getItemLabel(String(w.item))}
                               </p>
                               <p className="text-xs text-zinc-400">
                                 解决于 {w.resolved_at ? new Date(w.resolved_at).toLocaleDateString("zh-CN") : "-"}
@@ -487,7 +523,7 @@ export default function StudentDetail() {
               <div>
                 <label className="text-sm font-medium text-zinc-700 mb-2 block">选择薄弱项目</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {WEAKNESS_ITEMS.map((item) => (
+                  {fallbackItems.map((item) => (
                     <button
                       key={item.key}
                       onClick={() => setSelectedItem(item.key)}
@@ -506,25 +542,52 @@ export default function StudentDetail() {
 
               <div>
                 <label className="text-sm font-medium text-zinc-700 mb-2 block">
-                  严重程度：<span className="text-rose-600">Lv.{weaknessLevel}</span>
+                  严重程度：<span className="text-rose-600">{weaknessLevel ? getLevelLabel(weaknessLevel) : '-'}</span>
                 </label>
-                <div className="flex items-center gap-3">
-                  {[1, 2, 3, 4, 5].map((level) => (
-                    <button
-                      key={level}
-                      onClick={() => setWeaknessLevel(level)}
-                      className={cn(
-                        "flex-1 py-2 text-sm rounded-lg font-medium transition-all",
-                        weaknessLevel === level
-                          ? "bg-rose-500 text-white"
-                          : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"
-                      )}
-                    >
-                      {level}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-zinc-400 mt-1.5">1=轻微，5=严重</p>
+                {enabledLevels.length > 0 ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      {enabledLevels.map((lvl) => (
+                        <button
+                          key={lvl.level}
+                          onClick={() => setWeaknessLevel(lvl.level)}
+                          className={cn(
+                            "flex-1 py-2 text-sm rounded-lg font-medium transition-all",
+                            weaknessLevel === lvl.level
+                              ? "bg-rose-500 text-white"
+                              : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"
+                          )}
+                          title={lvl.description || undefined}
+                        >
+                          {lvl.level}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-zinc-400 mt-1.5">
+                      {enabledLevels.map(l => `L${l.level}=${l.label}`).join('，')}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3">
+                      {[1, 2, 3, 4, 5].map((level) => (
+                        <button
+                          key={level}
+                          onClick={() => setWeaknessLevel(level)}
+                          className={cn(
+                            "flex-1 py-2 text-sm rounded-lg font-medium transition-all",
+                            weaknessLevel === level
+                              ? "bg-rose-500 text-white"
+                              : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"
+                          )}
+                        >
+                          {level}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-zinc-400 mt-1.5">1=轻微，5=严重</p>
+                  </>
+                )}
               </div>
 
               <div>

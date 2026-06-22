@@ -12,6 +12,8 @@ import type {
   DashboardStats,
   HoursWarning,
   WeaknessRecord,
+  WeaknessItemConfig,
+  WeaknessLevelConfig,
 } from "../../shared/types"
 
 interface AppState {
@@ -39,6 +41,9 @@ interface AppState {
   commissionSummaries: CommissionSummary[]
   commissionDetails: Record<number, CommissionDetail[]>
 
+  weaknessItemConfigs: WeaknessItemConfig[]
+  weaknessLevelConfigs: WeaknessLevelConfig[]
+
   loading: Record<string, boolean>
   errors: Record<string, string | null>
 
@@ -63,6 +68,15 @@ interface AppState {
   checkoutCheckin: (id: number) => Promise<{ ok: boolean; warning?: string; error?: string }>
   updateCommissionSettings: (data: { subject2_price: number; subject3_price: number }) => Promise<boolean>
   createVehicle: (data: Record<string, unknown>) => Promise<boolean>
+
+  fetchWeaknessItemConfigs: () => Promise<void>
+  fetchWeaknessLevelConfigs: () => Promise<void>
+  addWeaknessItemConfig: (data: Record<string, unknown>) => Promise<boolean>
+  updateWeaknessItemConfig: (id: number, data: Record<string, unknown>) => Promise<boolean>
+  deleteWeaknessItemConfig: (id: number) => Promise<boolean>
+  addWeaknessLevelConfig: (data: Record<string, unknown>) => Promise<boolean>
+  updateWeaknessLevelConfig: (id: number, data: Record<string, unknown>) => Promise<boolean>
+  deleteWeaknessLevelConfig: (id: number) => Promise<boolean>
 }
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -101,6 +115,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   commissionSettings: [],
   commissionSummaries: [],
   commissionDetails: {},
+
+  weaknessItemConfigs: [],
+  weaknessLevelConfigs: [],
 
   loading: {},
   errors: {},
@@ -346,6 +363,84 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       await apiFetch("/vehicles", { method: "POST", body: JSON.stringify(data) })
       get().fetchVehicles()
+      return true
+    } catch {
+      return false
+    }
+  },
+
+  fetchWeaknessItemConfigs: async () => {
+    try {
+      const data = await apiFetch<WeaknessItemConfig[]>("/weakness-config/items")
+      set({ weaknessItemConfigs: data })
+    } catch {
+      // silent
+    }
+  },
+
+  fetchWeaknessLevelConfigs: async () => {
+    try {
+      const data = await apiFetch<WeaknessLevelConfig[]>("/weakness-config/levels")
+      set({ weaknessLevelConfigs: data })
+    } catch {
+      // silent
+    }
+  },
+
+  addWeaknessItemConfig: async (data) => {
+    try {
+      await apiFetch("/weakness-config/items", { method: "POST", body: JSON.stringify(data) })
+      get().fetchWeaknessItemConfigs()
+      return true
+    } catch {
+      return false
+    }
+  },
+
+  updateWeaknessItemConfig: async (id, data) => {
+    try {
+      await apiFetch(`/weakness-config/items/${id}`, { method: "PUT", body: JSON.stringify(data) })
+      get().fetchWeaknessItemConfigs()
+      return true
+    } catch {
+      return false
+    }
+  },
+
+  deleteWeaknessItemConfig: async (id) => {
+    try {
+      await apiFetch(`/weakness-config/items/${id}`, { method: "DELETE" })
+      get().fetchWeaknessItemConfigs()
+      return true
+    } catch {
+      return false
+    }
+  },
+
+  addWeaknessLevelConfig: async (data) => {
+    try {
+      await apiFetch("/weakness-config/levels", { method: "POST", body: JSON.stringify(data) })
+      get().fetchWeaknessLevelConfigs()
+      return true
+    } catch {
+      return false
+    }
+  },
+
+  updateWeaknessLevelConfig: async (id, data) => {
+    try {
+      await apiFetch(`/weakness-config/levels/${id}`, { method: "PUT", body: JSON.stringify(data) })
+      get().fetchWeaknessLevelConfigs()
+      return true
+    } catch {
+      return false
+    }
+  },
+
+  deleteWeaknessLevelConfig: async (id) => {
+    try {
+      await apiFetch(`/weakness-config/levels/${id}`, { method: "DELETE" })
+      get().fetchWeaknessLevelConfigs()
       return true
     } catch {
       return false

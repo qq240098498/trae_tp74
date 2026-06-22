@@ -19,6 +19,7 @@ import commissionRoutes from './routes/commissions.js'
 import dashboardRoutes from './routes/dashboard.js'
 import instructorRoutes from './routes/instructors.js'
 import vehicleRoutes from './routes/vehicles.js'
+import weaknessConfigRoutes from './routes/weakness-config.js'
 
 // for esm mode
 const __filename = fileURLToPath(import.meta.url)
@@ -44,6 +45,7 @@ app.use('/api/commissions', commissionRoutes)
 app.use('/api/dashboard', dashboardRoutes)
 app.use('/api/instructors', instructorRoutes)
 app.use('/api/vehicles', vehicleRoutes)
+app.use('/api/weakness-config', weaknessConfigRoutes)
 
 /**
  * health

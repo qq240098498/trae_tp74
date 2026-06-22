@@ -5,18 +5,20 @@ import { cn } from "@/lib/utils"
 import { WEAKNESS_ITEMS, type WeaknessItem } from "../../shared/types"
 
 export default function CheckIn() {
-  const { activeCheckins, checkins, loading, fetchActiveCheckins, fetchCheckins, checkoutCheckin, addStudentWeakness, studentWeaknesses, fetchStudentWeaknesses } = useAppStore()
+  const { activeCheckins, checkins, loading, fetchActiveCheckins, fetchCheckins, checkoutCheckin, addStudentWeakness, studentWeaknesses, fetchStudentWeaknesses, fetchWeaknessItemConfigs, fetchWeaknessLevelConfigs, weaknessItemConfigs, weaknessLevelConfigs } = useAppStore()
   const [dateFilter, setDateFilter] = useState(new Date().toISOString().slice(0, 10))
   const [toast, setToast] = useState<{ type: "warning" | "error" | "info" | "success"; message: string } | null>(null)
   const [weaknessModal, setWeaknessModal] = useState<{ checkInId: number; studentId: number; studentName: string } | null>(null)
   const [selectedItem, setSelectedItem] = useState<WeaknessItem | null>(null)
-  const [weaknessLevel, setWeaknessLevel] = useState(3)
+  const [weaknessLevel, setWeaknessLevel] = useState<number | null>(null)
   const [weaknessNote, setWeaknessNote] = useState("")
   const [expandedStudentId, setExpandedStudentId] = useState<number | null>(null)
 
   useEffect(() => {
     fetchActiveCheckins()
-  }, [fetchActiveCheckins])
+    fetchWeaknessItemConfigs()
+    fetchWeaknessLevelConfigs()
+  }, [fetchActiveCheckins, fetchWeaknessItemConfigs, fetchWeaknessLevelConfigs])
 
   useEffect(() => {
     fetchCheckins({ date: dateFilter })
@@ -28,6 +30,25 @@ export default function CheckIn() {
       return () => clearTimeout(t)
     }
   }, [toast])
+
+  const enabledItems = weaknessItemConfigs.filter(i => i.enabled)
+  const enabledLevels = weaknessLevelConfigs.filter(l => l.enabled).sort((a, b) => a.level - b.level)
+  const fallbackItems = enabledItems.length > 0
+    ? enabledItems.map(i => ({ key: i.key, label: i.label }))
+    : WEAKNESS_ITEMS
+  const defaultLevel = enabledLevels.length > 0 ? enabledLevels[Math.floor(enabledLevels.length / 2)].level : 3
+
+  const getItemLabel = (key: string) => {
+    const config = weaknessItemConfigs.find(i => i.key === key)
+    if (config) return config.label
+    const fallback = WEAKNESS_ITEMS.find(i => i.key === key)
+    return fallback?.label || key
+  }
+
+  const getLevelLabel = (level: number) => {
+    const config = weaknessLevelConfigs.find(l => l.level === level)
+    return config?.label || `Lv.${level}`
+  }
 
   const handleCheckout = async (id: number) => {
     const result = await checkoutCheckin(id)
@@ -43,7 +64,7 @@ export default function CheckIn() {
   const openWeaknessModal = (checkInId: number, studentId: number, studentName: string) => {
     setWeaknessModal({ checkInId, studentId, studentName })
     setSelectedItem(null)
-    setWeaknessLevel(3)
+    setWeaknessLevel(defaultLevel)
     setWeaknessNote("")
     fetchStudentWeaknesses(studentId)
   }
@@ -179,7 +200,7 @@ export default function CheckIn() {
                       <div className="flex flex-wrap gap-1.5">
                         {unresolvedWeaknesses.map(w => (
                           <span key={w.id} className="px-2.5 py-1 bg-amber-100 text-amber-700 text-xs rounded-full font-medium">
-                            {WEAKNESS_ITEMS.find(item => item.key === w.item)?.label} · Lv.{w.level}
+                            {getItemLabel(String(w.item))} · {getLevelLabel(w.level)}
                           </span>
                         ))}
                       </div>
@@ -187,7 +208,7 @@ export default function CheckIn() {
                         <div className="mt-2 pt-2 border-t border-amber-200">
                           {unresolvedWeaknesses.filter(w => w.note).map(w => (
                             <p key={w.id} className="text-xs text-amber-600">
-                              · {WEAKNESS_ITEMS.find(item => item.key === w.item)?.label}：{w.note}
+                              · {getItemLabel(String(w.item))}：{w.note}
                             </p>
                           ))}
                         </div>
@@ -292,7 +313,7 @@ export default function CheckIn() {
               <div>
                 <label className="text-sm font-medium text-zinc-700 mb-2 block">选择薄弱项目</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {WEAKNESS_ITEMS.map((item) => (
+                  {fallbackItems.map((item) => (
                     <button
                       key={item.key}
                       onClick={() => setSelectedItem(item.key)}
@@ -311,25 +332,52 @@ export default function CheckIn() {
 
               <div>
                 <label className="text-sm font-medium text-zinc-700 mb-2 block">
-                  严重程度：<span className="text-rose-600">Lv.{weaknessLevel}</span>
+                  严重程度：<span className="text-rose-600">{weaknessLevel ? getLevelLabel(weaknessLevel) : '-'}</span>
                 </label>
-                <div className="flex items-center gap-3">
-                  {[1, 2, 3, 4, 5].map((level) => (
-                    <button
-                      key={level}
-                      onClick={() => setWeaknessLevel(level)}
-                      className={cn(
-                        "flex-1 py-2 text-sm rounded-lg font-medium transition-all",
-                        weaknessLevel === level
-                          ? "bg-rose-500 text-white"
-                          : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"
-                      )}
-                    >
-                      {level}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-zinc-400 mt-1.5">1=轻微，5=严重</p>
+                {enabledLevels.length > 0 ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      {enabledLevels.map((lvl) => (
+                        <button
+                          key={lvl.level}
+                          onClick={() => setWeaknessLevel(lvl.level)}
+                          className={cn(
+                            "flex-1 py-2 text-sm rounded-lg font-medium transition-all",
+                            weaknessLevel === lvl.level
+                              ? "bg-rose-500 text-white"
+                              : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"
+                          )}
+                          title={lvl.description || undefined}
+                        >
+                          {lvl.level}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-zinc-400 mt-1.5">
+                      {enabledLevels.map(l => `L${l.level}=${l.label}`).join('，')}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3">
+                      {[1, 2, 3, 4, 5].map((level) => (
+                        <button
+                          key={level}
+                          onClick={() => setWeaknessLevel(level)}
+                          className={cn(
+                            "flex-1 py-2 text-sm rounded-lg font-medium transition-all",
+                            weaknessLevel === level
+                              ? "bg-rose-500 text-white"
+                              : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200"
+                          )}
+                        >
+                          {level}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-zinc-400 mt-1.5">1=轻微，5=严重</p>
+                  </>
+                )}
               </div>
 
               <div>

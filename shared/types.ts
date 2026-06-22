@@ -108,7 +108,7 @@ export interface HoursWarning {
   shortage: number
 }
 
-export type WeaknessItem = 'daoku' | 'cefang' | 'poqi' | 'swan'
+export type WeaknessItem = 'daoku' | 'cefang' | 'poqi' | 'swan' | string
 
 export interface WeaknessRecord {
   id: number
@@ -123,6 +123,24 @@ export interface WeaknessRecord {
   note: string | null
   created_at: string
   resolved_at: string | null
+}
+
+export interface WeaknessItemConfig {
+  id: number
+  key: string
+  label: string
+  sort_order: number
+  enabled: number
+  created_at: string
+}
+
+export interface WeaknessLevelConfig {
+  id: number
+  level: number
+  label: string
+  description: string | null
+  enabled: number
+  created_at: string
 }
 
 export const WEAKNESS_ITEMS: { key: WeaknessItem; label: string }[] = [
