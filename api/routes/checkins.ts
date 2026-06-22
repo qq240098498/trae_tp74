@@ -45,29 +45,44 @@ router.put('/:id', (req: Request, res: Response): void => {
     return
   }
 
-  const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+  const MIN_HOURS = 0.25
+  const MAX_HOURS = 8
+
+  const now = new Date()
   const checkInTime = new Date(String(checkIn.check_in_time))
-  const checkOutTime = new Date(now)
-  const diffMs = checkOutTime.getTime() - checkInTime.getTime()
+  const diffMs = now.getTime() - checkInTime.getTime()
   const durationHours = Math.round((diffMs / (1000 * 60 * 60)) * 10) / 10
 
+  if (diffMs <= 0) {
+    res.status(400).json({ success: false, error: '签退时间不能早于签到时间，请检查系统时间' })
+    return
+  }
+
+  if (durationHours > MAX_HOURS) {
+    res.status(400).json({ success: false, error: `单次练车时长超过上限${MAX_HOURS}小时，疑似异常打卡，请确认后手动处理` })
+    return
+  }
+
+  const nowStr = now.toISOString().slice(0, 19).replace('T', ' ')
   const subject = Number(checkIn.subject)
+
+  const finalHours = durationHours < MIN_HOURS ? 0 : durationHours
 
   db.prepare(`
     UPDATE check_in SET check_out_time = ?, duration_hours = ? WHERE id = ?
-  `).run(now, durationHours, req.params.id)
+  `).run(nowStr, finalHours, req.params.id)
 
   const student = db.prepare('SELECT * FROM student WHERE id = ?').get(checkIn.student_id) as Record<string, unknown> | undefined
 
-  if (student) {
+  if (student && finalHours > 0) {
     if (subject === 2) {
       const currentHours = Number(student.completed_hours_subject2)
       db.prepare('UPDATE student SET completed_hours_subject2 = ? WHERE id = ?')
-        .run(currentHours + durationHours, checkIn.student_id)
+        .run(Math.round((currentHours + finalHours) * 10) / 10, checkIn.student_id)
     } else {
       const currentHours = Number(student.completed_hours_subject3)
       db.prepare('UPDATE student SET completed_hours_subject3 = ? WHERE id = ?')
-        .run(currentHours + durationHours, checkIn.student_id)
+        .run(Math.round((currentHours + finalHours) * 10) / 10, checkIn.student_id)
     }
   }
 
@@ -80,7 +95,11 @@ router.put('/:id', (req: Request, res: Response): void => {
     WHERE ci.id = ?
   `).get(req.params.id)
 
-  res.json({ success: true, data: updated })
+  res.json({
+    success: true,
+    data: updated,
+    warning: durationHours < MIN_HOURS ? `练车时长不足${MIN_HOURS * 60}分钟，不计入学时` : undefined
+  })
 })
 
 router.get('/', (req: Request, res: Response): void => {

@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react"
-import { QrCode, LogOut } from "lucide-react"
+import { QrCode, LogOut, AlertCircle, Info } from "lucide-react"
 import { useAppStore } from "@/store"
 import { cn } from "@/lib/utils"
 
 export default function CheckIn() {
   const { activeCheckins, checkins, loading, fetchActiveCheckins, fetchCheckins, checkoutCheckin } = useAppStore()
   const [dateFilter, setDateFilter] = useState(new Date().toISOString().slice(0, 10))
+  const [toast, setToast] = useState<{ type: "warning" | "error" | "info"; message: string } | null>(null)
 
   useEffect(() => {
     fetchActiveCheckins()
@@ -15,12 +16,46 @@ export default function CheckIn() {
     fetchCheckins({ date: dateFilter })
   }, [dateFilter, fetchCheckins])
 
+  useEffect(() => {
+    if (toast) {
+      const t = setTimeout(() => setToast(null), 5000)
+      return () => clearTimeout(t)
+    }
+  }, [toast])
+
   const handleCheckout = async (id: number) => {
-    await checkoutCheckin(id)
+    const result = await checkoutCheckin(id)
+    if (!result.ok) {
+      setToast({ type: "error", message: result.error || "签退失败" })
+    } else if (result.warning) {
+      setToast({ type: "warning", message: result.warning })
+    } else {
+      setToast({ type: "info", message: "签退成功，学时已自动计算" })
+    }
+  }
+
+  const formatDuration = (hours: number | null | undefined) => {
+    if (hours == null) return null
+    if (hours <= 0) return "0小时（不计入学时）"
+    return `${hours}小时`
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {toast && (
+        <div className={cn(
+          "fixed top-6 right-6 z-50 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 text-sm font-medium max-w-sm animate-in fade-in slide-in-from-right",
+          toast.type === "warning" && "bg-amber-50 border border-amber-200 text-amber-800",
+          toast.type === "error" && "bg-red-50 border border-red-200 text-red-700",
+          toast.type === "info" && "bg-teal-50 border border-teal-200 text-teal-700"
+        )}>
+          {toast.type === "warning" && <AlertCircle className="w-4 h-4 shrink-0" />}
+          {toast.type === "error" && <AlertCircle className="w-4 h-4 shrink-0" />}
+          {toast.type === "info" && <Info className="w-4 h-4 shrink-0" />}
+          <span>{toast.message}</span>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl shadow-sm p-8 flex flex-col items-center justify-center min-h-[320px]">
           <div className="w-56 h-56 bg-zinc-50 border-2 border-dashed border-zinc-300 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden">
@@ -117,7 +152,9 @@ export default function CheckIn() {
                     </td>
                     <td className="px-6 py-3">
                       {c.duration_hours != null ? (
-                        <span className="text-zinc-600">{c.duration_hours}小时</span>
+                        <span className={cn(
+                          c.duration_hours <= 0 ? "text-zinc-400" : "text-zinc-600"
+                        )}>{formatDuration(c.duration_hours)}</span>
                       ) : (
                         <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">进行中</span>
                       )}

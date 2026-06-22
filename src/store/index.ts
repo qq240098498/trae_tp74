@@ -54,7 +54,7 @@ interface AppState {
   createStudent: (data: Record<string, unknown>) => Promise<boolean>
   scheduleExam: (studentId: number) => Promise<{ ok: boolean; error?: string }>
   createSchedule: (data: Record<string, unknown>) => Promise<{ ok: boolean; error?: string }>
-  checkoutCheckin: (id: number) => Promise<boolean>
+  checkoutCheckin: (id: number) => Promise<{ ok: boolean; warning?: string; error?: string }>
   updateCommissionSettings: (data: { subject2_price: number; subject3_price: number }) => Promise<boolean>
   createVehicle: (data: Record<string, unknown>) => Promise<boolean>
 }
@@ -266,12 +266,20 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   checkoutCheckin: async (id) => {
     try {
-      await apiFetch(`/checkins/${id}`, { method: "PUT" })
+      const res = await fetch(`/api/checkins/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        return { ok: false, error: json.error || json.message || "签退失败" }
+      }
       get().fetchActiveCheckins()
       get().fetchCheckins()
-      return true
-    } catch {
-      return false
+      get().fetchDashboard()
+      return { ok: true, warning: json.warning }
+    } catch (e) {
+      return { ok: false, error: (e as Error).message || "签退失败" }
     }
   },
 

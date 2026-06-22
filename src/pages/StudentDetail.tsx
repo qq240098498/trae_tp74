@@ -43,6 +43,12 @@ const examStatusMap: Record<string, { label: string; cls: string }> = {
   failed: { label: "未通过", cls: "bg-red-100 text-red-700" },
 }
 
+function formatDuration(hours: number | null | undefined) {
+  if (hours == null) return "-"
+  if (hours <= 0) return "0小时"
+  return `${hours}小时`
+}
+
 export default function StudentDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -211,7 +217,7 @@ export default function StudentDetail() {
                           {c.check_out_time ? new Date(c.check_out_time).toLocaleString("zh-CN") : "-"}
                         </td>
                         <td className="px-6 py-3 text-zinc-600">
-                          {c.duration_hours != null ? `${c.duration_hours}小时` : "-"}
+                          {formatDuration(c.duration_hours)}
                         </td>
                       </tr>
                     ))}

@@ -33,6 +33,12 @@ function StatusBadge({ checkoutTime }: { checkoutTime: string | null }) {
   return <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">签到</span>
 }
 
+function formatDuration(hours: number | null | undefined) {
+  if (hours == null) return "-"
+  if (hours <= 0) return "0小时"
+  return `${hours}小时`
+}
+
 export default function Dashboard() {
   const { dashboardStats, recentCheckins, hoursWarnings, loading, fetchDashboard } = useAppStore()
 
@@ -99,7 +105,7 @@ export default function Dashboard() {
                       {r.check_out_time ? new Date(r.check_out_time).toLocaleString("zh-CN") : "-"}
                     </td>
                     <td className="px-6 py-3 text-zinc-600">
-                      {r.duration_hours != null ? `${r.duration_hours}小时` : "-"}
+                      {formatDuration(r.duration_hours)}
                     </td>
                     <td className="px-6 py-3"><StatusBadge checkoutTime={r.check_out_time} /></td>
                   </tr>

@@ -11,6 +11,19 @@ const db = new Database(dbPath)
 db.pragma('journal_mode = WAL')
 db.pragma('foreign_keys = ON')
 
+function dateOffset(offsetDays: number, h: number, m: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + offsetDays)
+  d.setHours(h, m, 0, 0)
+  return d.toISOString().slice(0, 19).replace('T', ' ')
+}
+
+function dateOnly(offsetDays: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + offsetDays)
+  return d.toISOString().slice(0, 10)
+}
+
 db.exec(`
 CREATE TABLE IF NOT EXISTS instructor (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,6 +97,32 @@ CREATE TABLE IF NOT EXISTS commission_setting (
 );
 `)
 
+const cleanUp = db.transaction(() => {
+  const badNegative = db.prepare("UPDATE check_in SET duration_hours = 0 WHERE duration_hours < 0")
+  badNegative.run()
+
+  const badFuture = db.prepare(`
+    UPDATE check_in
+    SET check_in_time = datetime('now', '-1 hour')
+    WHERE datetime(check_in_time) > datetime('now', '+1 day')
+    AND check_out_time IS NULL
+  `)
+  badFuture.run()
+
+  const badNull = db.prepare(`
+    UPDATE check_in
+    SET duration_hours = CASE
+      WHEN check_out_time IS NOT NULL THEN
+        MAX(0, ROUND((julianday(check_out_time) - julianday(check_in_time)) * 24 * 10) / 10)
+      ELSE NULL
+    END
+    WHERE check_out_time IS NOT NULL
+    AND (duration_hours IS NULL OR duration_hours < 0)
+  `)
+  badNull.run()
+})
+try { cleanUp() } catch { /* table may not exist yet */ }
+
 const countInstructors = db.prepare('SELECT COUNT(*) as count FROM instructor').get() as { count: number }
 if (countInstructors.count === 0) {
   const insertInstructor = db.prepare(`
@@ -131,60 +170,60 @@ if (countInstructors.count === 0) {
     insertVehicle.run({ plate_number: '京A34567', model: '本田思域', status: 'available' })
     insertVehicle.run({ plate_number: '京A45678', model: '大众朗逸', status: 'maintenance' })
 
-    insertStudent.run({ name: '赵小明', phone: '13900001111', current_subject: 2, status: 'training', required_hours_subject2: 16, required_hours_subject3: 24, completed_hours_subject2: 14, completed_hours_subject3: 0, instructor_id: 1, enroll_date: '2026-04-01' })
-    insertStudent.run({ name: '钱小红', phone: '13900002222', current_subject: 2, status: 'training', required_hours_subject2: 16, required_hours_subject3: 24, completed_hours_subject2: 8, completed_hours_subject3: 0, instructor_id: 1, enroll_date: '2026-04-15' })
-    insertStudent.run({ name: '孙小刚', phone: '13900003333', current_subject: 2, status: 'training', required_hours_subject2: 16, required_hours_subject3: 24, completed_hours_subject2: 16, completed_hours_subject3: 0, instructor_id: 2, enroll_date: '2026-03-20' })
-    insertStudent.run({ name: '李小芳', phone: '13900004444', current_subject: 3, status: 'training', required_hours_subject2: 16, required_hours_subject3: 24, completed_hours_subject2: 16, completed_hours_subject3: 22, instructor_id: 2, enroll_date: '2026-02-10' })
-    insertStudent.run({ name: '周小强', phone: '13900005555', current_subject: 2, status: 'exam_scheduled', required_hours_subject2: 16, required_hours_subject3: 24, completed_hours_subject2: 16, completed_hours_subject3: 0, instructor_id: 3, enroll_date: '2026-03-01' })
-    insertStudent.run({ name: '吴小丽', phone: '13900006666', current_subject: 3, status: 'training', required_hours_subject2: 16, required_hours_subject3: 24, completed_hours_subject2: 16, completed_hours_subject3: 10, instructor_id: 1, enroll_date: '2026-01-15' })
-    insertStudent.run({ name: '郑小伟', phone: '13900007777', current_subject: 2, status: 'exam_passed', required_hours_subject2: 16, required_hours_subject3: 24, completed_hours_subject2: 16, completed_hours_subject3: 6, instructor_id: 3, enroll_date: '2026-01-01' })
-    insertStudent.run({ name: '王小军', phone: '13900008888', current_subject: 3, status: 'completed', required_hours_subject2: 16, required_hours_subject3: 24, completed_hours_subject2: 16, completed_hours_subject3: 24, instructor_id: 2, enroll_date: '2025-12-01' })
+    insertStudent.run({ name: '赵小明', phone: '13900001111', current_subject: 2, status: 'training', required_hours_subject2: 16, required_hours_subject3: 24, completed_hours_subject2: 14, completed_hours_subject3: 0, instructor_id: 1, enroll_date: dateOnly(-80) })
+    insertStudent.run({ name: '钱小红', phone: '13900002222', current_subject: 2, status: 'training', required_hours_subject2: 16, required_hours_subject3: 24, completed_hours_subject2: 8, completed_hours_subject3: 0, instructor_id: 1, enroll_date: dateOnly(-65) })
+    insertStudent.run({ name: '孙小刚', phone: '13900003333', current_subject: 2, status: 'training', required_hours_subject2: 16, required_hours_subject3: 24, completed_hours_subject2: 16, completed_hours_subject3: 0, instructor_id: 2, enroll_date: dateOnly(-90) })
+    insertStudent.run({ name: '李小芳', phone: '13900004444', current_subject: 3, status: 'training', required_hours_subject2: 16, required_hours_subject3: 24, completed_hours_subject2: 16, completed_hours_subject3: 22, instructor_id: 2, enroll_date: dateOnly(-120) })
+    insertStudent.run({ name: '周小强', phone: '13900005555', current_subject: 2, status: 'exam_scheduled', required_hours_subject2: 16, required_hours_subject3: 24, completed_hours_subject2: 16, completed_hours_subject3: 0, instructor_id: 3, enroll_date: dateOnly(-100) })
+    insertStudent.run({ name: '吴小丽', phone: '13900006666', current_subject: 3, status: 'training', required_hours_subject2: 16, required_hours_subject3: 24, completed_hours_subject2: 16, completed_hours_subject3: 10, instructor_id: 1, enroll_date: dateOnly(-150) })
+    insertStudent.run({ name: '郑小伟', phone: '13900007777', current_subject: 2, status: 'exam_passed', required_hours_subject2: 16, required_hours_subject3: 24, completed_hours_subject2: 16, completed_hours_subject3: 6, instructor_id: 3, enroll_date: dateOnly(-165) })
+    insertStudent.run({ name: '王小军', phone: '13900008888', current_subject: 3, status: 'completed', required_hours_subject2: 16, required_hours_subject3: 24, completed_hours_subject2: 16, completed_hours_subject3: 24, instructor_id: 2, enroll_date: dateOnly(-200) })
 
     const timeSlots = ['08:00-10:00', '10:00-12:00', '14:00-16:00', '16:00-18:00']
-    const dates = ['2026-06-20', '2026-06-21', '2026-06-22', '2026-06-23', '2026-06-24']
+    const dates = [dateOnly(-2), dateOnly(-1), dateOnly(0), dateOnly(1), dateOnly(2)]
 
     for (const date of dates) {
       for (const slot of timeSlots) {
         const instructorId = ((timeSlots.indexOf(slot) + dates.indexOf(date)) % 3) + 1
         const vehicleId = ((timeSlots.indexOf(slot) + dates.indexOf(date)) % 3) + 1
-        const status = date < '2026-06-22' ? 'completed' : 'scheduled'
+        const status = date < dateOnly(0) ? 'completed' : 'scheduled'
         insertSchedule.run({ instructor_id: instructorId, vehicle_id: vehicleId, schedule_date: date, time_slot: slot, status })
       }
     }
 
     const checkInData = [
-      { student_id: 1, instructor_id: 1, vehicle_id: 1, schedule_id: 1, check_in_time: '2026-06-20 08:00:00', check_out_time: '2026-06-20 10:00:00', duration_hours: 2.0, subject: 2 },
-      { student_id: 2, instructor_id: 1, vehicle_id: 2, schedule_id: 2, check_in_time: '2026-06-20 10:00:00', check_out_time: '2026-06-20 12:00:00', duration_hours: 2.0, subject: 2 },
-      { student_id: 3, instructor_id: 2, vehicle_id: 2, schedule_id: 3, check_in_time: '2026-06-20 14:00:00', check_out_time: '2026-06-20 16:00:00', duration_hours: 2.0, subject: 2 },
-      { student_id: 4, instructor_id: 2, vehicle_id: 1, schedule_id: 4, check_in_time: '2026-06-20 16:00:00', check_out_time: '2026-06-20 18:00:00', duration_hours: 2.0, subject: 3 },
-      { student_id: 1, instructor_id: 1, vehicle_id: 1, schedule_id: 5, check_in_time: '2026-06-21 08:00:00', check_out_time: '2026-06-21 10:00:00', duration_hours: 2.0, subject: 2 },
-      { student_id: 5, instructor_id: 3, vehicle_id: 3, schedule_id: 6, check_in_time: '2026-06-21 10:00:00', check_out_time: '2026-06-21 12:00:00', duration_hours: 2.0, subject: 2 },
-      { student_id: 6, instructor_id: 1, vehicle_id: 1, schedule_id: 7, check_in_time: '2026-06-21 14:00:00', check_out_time: '2026-06-21 16:00:00', duration_hours: 2.0, subject: 3 },
-      { student_id: 7, instructor_id: 3, vehicle_id: 3, schedule_id: 8, check_in_time: '2026-06-21 16:00:00', check_out_time: '2026-06-21 18:00:00', duration_hours: 2.0, subject: 2 },
-      { student_id: 3, instructor_id: 2, vehicle_id: 2, schedule_id: 9, check_in_time: '2026-06-22 08:00:00', check_out_time: '2026-06-22 10:00:00', duration_hours: 2.0, subject: 2 },
-      { student_id: 4, instructor_id: 2, vehicle_id: 1, schedule_id: 10, check_in_time: '2026-06-22 10:00:00', check_out_time: '2026-06-22 12:00:00', duration_hours: 2.0, subject: 3 },
-      { student_id: 1, instructor_id: 1, vehicle_id: 1, schedule_id: 11, check_in_time: '2026-06-22 14:00:00', check_out_time: '2026-06-22 16:00:00', duration_hours: 2.0, subject: 2 },
-      { student_id: 2, instructor_id: 1, vehicle_id: 2, schedule_id: 12, check_in_time: '2026-06-22 16:00:00', check_out_time: '2026-06-22 18:00:00', duration_hours: 2.0, subject: 2 },
-      { student_id: 8, instructor_id: 2, vehicle_id: 2, schedule_id: null, check_in_time: '2026-06-19 08:00:00', check_out_time: '2026-06-19 10:00:00', duration_hours: 2.0, subject: 3 },
-      { student_id: 8, instructor_id: 2, vehicle_id: 1, schedule_id: null, check_in_time: '2026-06-18 08:00:00', check_out_time: '2026-06-18 10:00:00', duration_hours: 2.0, subject: 3 },
-      { student_id: 7, instructor_id: 3, vehicle_id: 3, schedule_id: null, check_in_time: '2026-06-17 14:00:00', check_out_time: '2026-06-17 16:00:00', duration_hours: 2.0, subject: 2 },
-      { student_id: 6, instructor_id: 1, vehicle_id: 1, schedule_id: null, check_in_time: '2026-06-16 08:00:00', check_out_time: '2026-06-16 10:00:00', duration_hours: 2.0, subject: 3 },
-      { student_id: 5, instructor_id: 3, vehicle_id: 3, schedule_id: null, check_in_time: '2026-06-15 10:00:00', check_out_time: '2026-06-15 12:00:00', duration_hours: 2.0, subject: 2 },
-      { student_id: 4, instructor_id: 2, vehicle_id: 2, schedule_id: null, check_in_time: '2026-06-14 14:00:00', check_out_time: '2026-06-14 16:00:00', duration_hours: 2.0, subject: 3 },
-      { student_id: 3, instructor_id: 2, vehicle_id: 1, schedule_id: null, check_in_time: '2026-06-13 08:00:00', check_out_time: '2026-06-13 10:00:00', duration_hours: 2.0, subject: 2 },
-      { student_id: 2, instructor_id: 1, vehicle_id: 2, schedule_id: null, check_in_time: '2026-06-12 10:00:00', check_out_time: '2026-06-12 12:00:00', duration_hours: 2.0, subject: 2 },
-      { student_id: 1, instructor_id: 1, vehicle_id: 1, schedule_id: 13, check_in_time: '2026-06-23 08:00:00', check_out_time: null, duration_hours: null, subject: 2 },
-      { student_id: 6, instructor_id: 1, vehicle_id: 2, schedule_id: 14, check_in_time: '2026-06-23 10:00:00', check_out_time: null, duration_hours: null, subject: 3 },
+      { student_id: 1, instructor_id: 1, vehicle_id: 1, schedule_id: 1, check_in_time: dateOffset(-2, 8, 0), check_out_time: dateOffset(-2, 10, 0), duration_hours: 2.0, subject: 2 },
+      { student_id: 2, instructor_id: 1, vehicle_id: 2, schedule_id: 2, check_in_time: dateOffset(-2, 10, 0), check_out_time: dateOffset(-2, 12, 0), duration_hours: 2.0, subject: 2 },
+      { student_id: 3, instructor_id: 2, vehicle_id: 2, schedule_id: 3, check_in_time: dateOffset(-2, 14, 0), check_out_time: dateOffset(-2, 16, 0), duration_hours: 2.0, subject: 2 },
+      { student_id: 4, instructor_id: 2, vehicle_id: 1, schedule_id: 4, check_in_time: dateOffset(-2, 16, 0), check_out_time: dateOffset(-2, 18, 0), duration_hours: 2.0, subject: 3 },
+      { student_id: 1, instructor_id: 1, vehicle_id: 1, schedule_id: 5, check_in_time: dateOffset(-1, 8, 0), check_out_time: dateOffset(-1, 10, 0), duration_hours: 2.0, subject: 2 },
+      { student_id: 5, instructor_id: 3, vehicle_id: 3, schedule_id: 6, check_in_time: dateOffset(-1, 10, 0), check_out_time: dateOffset(-1, 12, 0), duration_hours: 2.0, subject: 2 },
+      { student_id: 6, instructor_id: 1, vehicle_id: 1, schedule_id: 7, check_in_time: dateOffset(-1, 14, 0), check_out_time: dateOffset(-1, 16, 0), duration_hours: 2.0, subject: 3 },
+      { student_id: 7, instructor_id: 3, vehicle_id: 3, schedule_id: 8, check_in_time: dateOffset(-1, 16, 0), check_out_time: dateOffset(-1, 18, 0), duration_hours: 2.0, subject: 2 },
+      { student_id: 3, instructor_id: 2, vehicle_id: 2, schedule_id: 9, check_in_time: dateOffset(0, 8, 0), check_out_time: dateOffset(0, 10, 0), duration_hours: 2.0, subject: 2 },
+      { student_id: 4, instructor_id: 2, vehicle_id: 1, schedule_id: 10, check_in_time: dateOffset(0, 10, 0), check_out_time: dateOffset(0, 12, 0), duration_hours: 2.0, subject: 3 },
+      { student_id: 1, instructor_id: 1, vehicle_id: 1, schedule_id: 11, check_in_time: dateOffset(0, 14, 0), check_out_time: dateOffset(0, 16, 0), duration_hours: 2.0, subject: 2 },
+      { student_id: 2, instructor_id: 1, vehicle_id: 2, schedule_id: 12, check_in_time: dateOffset(0, 16, 0), check_out_time: null, duration_hours: null, subject: 2 },
+      { student_id: 8, instructor_id: 2, vehicle_id: 2, schedule_id: null, check_in_time: dateOffset(-3, 8, 0), check_out_time: dateOffset(-3, 10, 0), duration_hours: 2.0, subject: 3 },
+      { student_id: 8, instructor_id: 2, vehicle_id: 1, schedule_id: null, check_in_time: dateOffset(-4, 8, 0), check_out_time: dateOffset(-4, 10, 0), duration_hours: 2.0, subject: 3 },
+      { student_id: 7, instructor_id: 3, vehicle_id: 3, schedule_id: null, check_in_time: dateOffset(-5, 14, 0), check_out_time: dateOffset(-5, 16, 0), duration_hours: 2.0, subject: 2 },
+      { student_id: 6, instructor_id: 1, vehicle_id: 1, schedule_id: null, check_in_time: dateOffset(-6, 8, 0), check_out_time: dateOffset(-6, 10, 0), duration_hours: 2.0, subject: 3 },
+      { student_id: 5, instructor_id: 3, vehicle_id: 3, schedule_id: null, check_in_time: dateOffset(-7, 10, 0), check_out_time: dateOffset(-7, 12, 0), duration_hours: 2.0, subject: 2 },
+      { student_id: 4, instructor_id: 2, vehicle_id: 2, schedule_id: null, check_in_time: dateOffset(-8, 14, 0), check_out_time: dateOffset(-8, 16, 0), duration_hours: 2.0, subject: 3 },
+      { student_id: 3, instructor_id: 2, vehicle_id: 1, schedule_id: null, check_in_time: dateOffset(-9, 8, 0), check_out_time: dateOffset(-9, 10, 0), duration_hours: 2.0, subject: 2 },
+      { student_id: 2, instructor_id: 1, vehicle_id: 2, schedule_id: null, check_in_time: dateOffset(-10, 10, 0), check_out_time: dateOffset(-10, 12, 0), duration_hours: 2.0, subject: 2 },
+      { student_id: 1, instructor_id: 1, vehicle_id: 1, schedule_id: 13, check_in_time: dateOffset(0, 8, 0), check_out_time: null, duration_hours: null, subject: 2 },
+      { student_id: 6, instructor_id: 1, vehicle_id: 2, schedule_id: 14, check_in_time: dateOffset(0, 10, 0), check_out_time: null, duration_hours: null, subject: 3 },
     ]
 
     for (const ci of checkInData) {
       insertCheckIn.run(ci)
     }
 
-    insertExam.run({ student_id: 5, subject: 2, status: 'approved', exam_date: '2026-06-25', result: null })
-    insertExam.run({ student_id: 7, subject: 2, status: 'passed', exam_date: '2026-06-10', result: 'pass' })
-    insertExam.run({ student_id: 8, subject: 2, status: 'passed', exam_date: '2026-05-20', result: 'pass' })
-    insertExam.run({ student_id: 8, subject: 3, status: 'passed', exam_date: '2026-06-15', result: 'pass' })
+    insertExam.run({ student_id: 5, subject: 2, status: 'approved', exam_date: dateOnly(3), result: null })
+    insertExam.run({ student_id: 7, subject: 2, status: 'passed', exam_date: dateOnly(-12), result: 'pass' })
+    insertExam.run({ student_id: 8, subject: 2, status: 'passed', exam_date: dateOnly(-30), result: 'pass' })
+    insertExam.run({ student_id: 8, subject: 3, status: 'passed', exam_date: dateOnly(-5), result: 'pass' })
     insertExam.run({ student_id: 7, subject: 3, status: 'pending', exam_date: null, result: null })
     insertExam.run({ student_id: 4, subject: 3, status: 'pending', exam_date: null, result: null })
 
